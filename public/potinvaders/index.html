@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <meta name="author" content="Dimitri del Marmol">
+    <meta name="description" content="Play 'Space Invaders' using a potentiometer and a button">
+    <title>Pot Invaders</title>
+
+    <script src="/socket.io/socket.io.js"></script>
+  </head>
+  <body>
+    <h1>Pot Invaders</h1>
+    <h2>Output</h2>
+    <canvas id="drawingArea" width="520" height="500"></canvas>
+    <script>
+      var context = document.getElementById("drawingArea").getContext("2d");
+      var canvasWidth = context.canvas.width;
+      var canvasHeight = context.canvas.height;
+
+      // Configuration
+      var buttonMessage   = /button: ([a-z]*)/;
+      var potMessage      = /pot: ([0-9]*)/;
+      var retryTime       = 1000; //ms
+      var maxPotValue     = 1023;
+
+      var canvasColor     = "#FFFFFF"
+
+      var textColor       = "#FF0000";
+      var textStyle       = "bold"
+      var textFont        = "Arial"
+      var textHeight      = 16;
+      var textXOffset     = 0;
+      var textYOffset     = 20;
+
+      var shipColor       = "#FF0000";
+      var shipWidth       = 20;
+      var shipHeight      = 10;
+      var shipYOffset     = canvasHeight - shipHeight;
+
+      var invaderColor    = "#00FF00"
+      var invadersSpacing = 2;
+      var invadersWidth   = 48;
+      var invadersHeight  = 20;
+      var invadersYOffset = 40;
+
+      var missileColor    = "#0000FF";
+      var missileHeight   = 10;
+      var missileWidth    = 4;
+      var missileSpeed    = 250; // px/s
+
+      // Game state
+      var shipPosition;
+      var invaders = [];
+      var missiles = [];
+      var missileCount = 0;
+
+      function startGame () {
+        missileCount = 0;
+        for (var i = 0; i < Math.floor(canvasWidth / invadersWidth); i++) {
+          invaders.push({
+            x: i * (invadersWidth + invadersSpacing),
+            y: invadersYOffset,
+            leftEdge: i * (invadersWidth + invadersSpacing),
+            rightEdge: i * (invadersWidth + invadersSpacing) + invadersWidth,
+            live: true
+          });
+        }
+      }
+
+      function currentTime () {
+        return new Date().getTime();
+      }
+
+      function clearDisplay () {
+        context.fillStyle = canvasColor;
+        context.fillRect(0, 0, canvasWidth, canvasHeight);
+      }
+
+      function drawShip () {
+        context.fillStyle = shipColor;
+        context.fillRect(shipPosition, shipYOffset, shipWidth, shipHeight);
+      }
+
+      function collision (missile, invader) {
+        return !(missile.rightEdge() < invader.leftEdge
+              || missile.leftEdge()  > invader.rightEdge)
+              && missile.y() < invadersYOffset + invadersHeight;
+      }
+
+      function drawInvaders () {
+        missiles.forEach(function (missile) {
+          invaders.forEach(function (invader) {
+            if (collision(missile, invader)) {
+              invader.live = false;
+            }
+          });
+        });
+        var remainingInvaders = [];
+        invaders.forEach(function (invader) {
+          if (invader.live) {
+            remainingInvaders.push(invader);
+            context.fillStyle = invaderColor;
+            context.fillRect(invader.x, invader.y, invadersWidth, invadersHeight);
+          }
+        });
+        invaders = remainingInvaders;
+      }
+
+      function drawMissiles () {
+        var remainingMissiles = [];
+        missiles.forEach(function (missile) {
+          if (missile.y() > 0) {
+            context.fillStyle = missileColor;
+            context.fillRect(missile.x(), missile.y(), missile.width(), missile.height());
+            remainingMissiles.push(missile);
+          }
+        });
+        missiles = remainingMissiles;
+      }
+
+      function redraw () {
+        clearDisplay();
+        if (invaders.length > 0) {
+          displayMessage("Missiles fired: " + missileCount);
+          drawShip();
+          drawMissiles();
+          drawInvaders();
+        } else {
+          displayMessage("Game over! Press button to restart...")
+        }
+      }
+
+      function fireMissile () {
+        missileCount++;
+        var missileX = shipPosition + 8;
+        var fireTimestamp = currentTime();
+        missiles.push({
+          x: function() {
+            return missileX;
+          },
+          y: function () {
+            return shipYOffset - shipHeight - (currentTime() - fireTimestamp) * missileSpeed / 1000;
+          },
+          width: function () {
+            return missileWidth;
+          },
+          height: function () {
+             return missileHeight;
+          },
+          leftEdge: function () {
+            return this.x();
+          },
+          rightEdge: function () {
+            return this.x() + this.width();
+          }
+        });
+      }
+
+      function bindSocket (socket) {
+        socket.on('data', function (data) {
+          if (buttonMessage.test(data) && data.match(buttonMessage)[1] === "pressed") {
+            if (invaders.length > 0) {
+              fireMissile();
+            } else {
+              startGame();
+            }
+          }
+          if (potMessage.test(data)) {
+            shipPosition = parseInt(data.match(potMessage)[1]) * (canvasWidth - shipWidth) / maxPotValue;
+          }
+          redraw();
+        });
+      }
+
+      function displayMessage (message) {
+        clearDisplay();
+        context.font = textStyle + " " + textHeight + "px " + textFont;
+        context.fillStyle = textColor;
+        context.fillText(message, textXOffset, textYOffset);
+      }
+
+      var socket = io.connect('//');
+      function connect () {
+        if (socket.socket.connected) {
+          bindSocket(socket);
+        } else {
+          socket.socket.reconnect();
+          socket.on('connect', function () {
+            bindSocket(socket);
+          });
+        }
+      }
+      socket.on('waiting_for_arduino', displayMessage);
+      socket.on('arduino_connected', displayMessage);
+      socket.on('arduino_disconnected', displayMessage);
+      socket.on('disconnect', function () {
+        displayMessage("Server was disconnected");
+        setTimeout(connect, retryTime);
+      });
+
+      startGame();
+      displayMessage("Waiting for server...");
+      connect();
+    </script>
+    <h2>Hardware</h2>
+    <img src="schematic.png">
+    <img src="breadboard.png">
+    <h2>Arduino program</h2>
+    <pre><code>byte potPin = 0;
+byte buttonPin = 2;
+byte buttonState;
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  buttonState = digitalRead(buttonPin);
+  if (buttonState == HIGH) {
+    Serial.println("button: pressed");
+  } else {
+    Serial.println("button: released");
+  }
+  Serial.print("pot: ");
+  Serial.println(analogRead(potPin));
+  delay(100);
+}</code><pre>
+  </body>
+</html>

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <meta name="author" content="Dimitri del Marmol">
+    <meta name="description" content="Display button presses transmitted through the serial port">
+    <title>Button</title>
+
+    <script src="/socket.io/socket.io.js"></script>
+  </head>
+  <body>
+    <h1>Button</h1>
+    <h2>Output</h2>
+    <span style="color: red" id="output"></span>
+    <script>
+      // Configuration
+      var buttonMessage  = /button: ([a-z]*)/;
+      var retryTime      = 1000; //ms
+
+      function displayMessage (message) {
+        document.getElementById("output").textContent = message;
+      }
+
+      function bindSocket (socket) {
+        socket.on('data', function (data) {
+          if (buttonMessage.test(data)) {
+            var state = data.match(buttonMessage)[1];
+            displayMessage("Button " + state);
+          }
+        });
+      }
+
+      var socket = io.connect('//');
+      function connect () {
+        if (socket.socket.connected) {
+          bindSocket(socket);
+        } else {
+          socket.socket.reconnect();
+          socket.on('connect', function () {
+            bindSocket(socket);
+          });
+        }
+      }
+      socket.on('waiting_for_arduino', displayMessage);
+      socket.on('arduino_connected', displayMessage);
+      socket.on('arduino_disconnected', displayMessage);
+      socket.on('disconnect', function () {
+        displayMessage("Server was disconnected");
+        setTimeout(connect, retryTime);
+      });
+
+      displayMessage("Waiting for server...");
+      connect();
+    </script>
+    <h2>Hardware</h2>
+    <img src="schematic.png">
+    <img src="breadboard.png">
+    <h2>Arduino program</h2>
+    <pre><code>byte buttonPin = 2;
+byte buttonState;
+
+void setup() {
+  pinMode(buttonPin, INPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  buttonState = digitalRead(buttonPin);
+  if (buttonState == HIGH) {
+    Serial.println("button: pressed");
+  } else {
+    Serial.println("button: released");
+  }
+  delay(100);
+}</code><pre>
+  </body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <meta name="author" content="Dimitri del Marmol">
+    <meta name="description" content="Display the value of a potentiometer transmitted through the serial port">
+    <title>Potentiometer</title>
+
+    <script src="/socket.io/socket.io.js"></script>
+  </head>
+  <body>
+    <h1>Potentiometer</h1>
+    <h2>Output</h2>
+    <canvas id="drawingArea" width="500" height="50"></canvas>
+    <script>
+      var context = document.getElementById("drawingArea").getContext("2d");
+      var canvasWidth = context.canvas.width;
+      var canvasHeight = context.canvas.height;
+
+      // Configuration
+      var potMessage      = /pot: ([0-9]*)/;
+      var retryTime       = 1000; //ms
+      var maxPotValue     = 1023;
+
+      var canvasColor     = "#FFFFFF";
+
+      var barColor        = "#FF0000";
+
+      var textColor       = "#FF0000";
+      var textStyle       = "bold"
+      var textFont        = "Arial"
+      var textHeight      = 16;
+      var textXOffset     = 0;
+      var textYOffset     = 20;
+
+      function clearDisplay () {
+        context.fillStyle = canvasColor;
+        context.fillRect(0, 0, canvasWidth, canvasHeight);
+      }
+
+      function displayMessage (message) {
+        clearDisplay();
+        context.font = textStyle + " " + textHeight + "px " + textFont;
+        context.fillStyle = textColor;
+        context.fillText(message, textXOffset, textYOffset);
+      }
+
+      function bindSocket (socket) {
+        socket.on('data', function (data) {
+          if (potMessage.test(data)) {
+            var value = parseInt(data.match(potMessage)[1], 10) * canvasWidth / maxPotValue;
+            clearDisplay();
+            context.fillStyle = barColor;
+            context.fillRect(0, 0, value, canvasHeight);
+          }
+        });
+      }
+
+      var socket = io.connect('//');
+      function connect () {
+        if (socket.socket.connected) {
+          bindSocket(socket);
+        } else {
+          socket.socket.reconnect();
+          socket.on('connect', function () {
+            bindSocket(socket);
+          });
+        }
+      }
+      socket.on('waiting_for_arduino', displayMessage);
+      socket.on('arduino_connected', displayMessage);
+      socket.on('arduino_disconnected', displayMessage);
+      socket.on('disconnect', function () {
+        displayMessage("Server was disconnected");
+        setTimeout(connect, re);
+      });
+
+      displayMessage("Waiting for server...");
+      connect();
+    </script>
+    <h2>Hardware</h2>
+    <img src="schematic.png">
+    <img src="breadboard.png">
+    <h2>Arduino program</h2>
+    <pre><code>byte potPin = 0;
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  Serial.print("pot: ");
+  Serial.println(analogRead(potPin));
+  delay(100);
+}</code><pre>
+  </body>
+</html>

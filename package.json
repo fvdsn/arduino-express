@@ -1,0 +1,18 @@
+{
+  "name": "arduino-express",
+  "version": "0.0.0",
+  "description": "Arduino projects on the web",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "repository": "https://github.com/ddm/arduino-express.git",
+  "author": "Dimitri del Marmol",
+  "license": "MIT",
+  "dependencies": {
+    "serialport": "~1.1.0",
+    "express": "~3.2.4",
+    "socket.io": "~0.9.14",
+    "underscore": "~1.4.4"
+  }
+}
