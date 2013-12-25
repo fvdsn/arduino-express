@@ -20,17 +20,29 @@ app.use(express.errorHandler());
 var io = require('socket.io').listen(server);
 var EventEmitter = events.EventEmitter;
 var serialPortConnection = new EventEmitter();
+var arduino_port = {port:null};
 
 io.sockets.on('connection', function (socket) {
   socket.emit('waiting_for_arduino', "Waiting for Arduino");
   serialPortConnection.on('arduino_connected', function (message) {
     socket.emit('arduino_connected', "Arduino is connected");
+    arduino_port.port = message.serial;
   });
   serialPortConnection.on('arduino_disconnected', function (message) {
     socket.emit('arduino_disconnected', "Arduino was disconnected");
+    arduino_port.port = null;
   });
   serialPortConnection.on('data', function(data) {
     socket.emit('data', data);
+  });
+  socket.on('color',function(data){
+      if(arduino_port.port){
+          console.log('COLOR:',data);
+          arduino_port.port.write(new Buffer([0x63, Math.max(1,data.r),
+                                                    Math.max(1,data.g),
+                                                    Math.max(1,data.b),
+                                                    0x0a]));
+      }
   });
 });
 
@@ -47,15 +59,16 @@ io.sockets.on('connection', function (socket) {
       console.log("Connecting to serial port", comPort.comName);
       var SerialPort = serialport.SerialPort;
       var port = new SerialPort(comPort.comName, {
-        baudrate: 9600,
+        baudrate: 19200,
         parser: serialport.parsers.readline("\n")
       }, false);
       port.open(function (err) {
         if (!err) {
-          serialPortConnection.emit('arduino_connected', { port: comPort.comName });
+          serialPortConnection.emit('arduino_connected', { port: comPort.comName, serial:port});
           port.on('data', function (data) {
             serialPortConnection.emit('data', data);
           });
+
         }
       });
       port.on('close', function () {
